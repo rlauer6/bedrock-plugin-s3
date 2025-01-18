@@ -1,0 +1,3 @@
+Test::More
+LWP::UserAgent
+HTTP::Request

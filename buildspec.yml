@@ -1,0 +1,26 @@
+project:
+  description: BLM::Startup::S3
+  author:
+    name: Rob Lauer
+    mailto: rlauer6@comcast.net
+pm_module: BLM::Startup::S3
+min-perl-version: 5.010
+dependencies:
+  requires: requires
+  test_requires: test-requires
+path:
+  pm_module: lib
+  tests: t
+extra-files:
+  - ChangeLog
+  - share:
+      - s3.xml
+resources:
+  homepage: http://github.com/rlauer6/bedrock-plugin-s3.git
+  bugtracker:
+    web: http://github.com/rlauer6/bedrock-plugin-s3/issues
+    mailto: rlauer6@comcast.net
+  repository:
+    url: git://github.com/rlauer6/bedrock-plugin-s3.git
+    web: http://github.com/rlauer6/bedrock-plugin.s3
+    type: 'git'

@@ -1,0 +1,39 @@
+Sat Jan 18 09:28:05 2025  Rob Lauer  <rlauer6@comcast.net>
+
+	[1.0.0 - moved from Bedrock]:
+	* ChangeLog: new
+	* .gitignore: new
+	* ChangeLog: new
+	* Makefile: new
+	* README.md: new
+	* buildspec.yml: new
+	* extra-files: new
+	* lib/BLM/Startup/S3.pm
+	- use Time::Piece
+	- moved from Bedrock
+	- pod updates
+	(new): +region
+	(buckets): new
+	(add_bucket): new
+	* lib/Bedrock/Apache/BedrockCloudSessionFiles.pm
+	- moved from Bedrock
+	(handler)
+	- accept filename for testing
+	- send_s3_hanlder($r, $filename) now
+	* lib/Bedrock/Apache/BedrockS3Handler.pm
+	- moved from Bedrock
+	- get host from S3_HOST environment var
+	- set secure from protocol
+	(send_s3_file)
+	- send_s3_file(r, filename, session-dir) now
+	- try to determine mime-type
+	* s3.xml: likewise
+	* provides: new
+	* requires: new
+	* resources: new
+	* test-requires: new
+	* t/00-s3.t: new
+	* t/01-s3.t: new
+	* docker-compose.yml: new
+
+

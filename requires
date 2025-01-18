@@ -1,0 +1,7 @@
+Role::Tiny 2.002004
+Amazon::Credentials 1.1.23
+Bedrock 3.2.0
+Readonly 2.05
+Class::Accessor::Fast 0.51
+Role::Tiny::With 2.002004
+Amazon::S3 0.65
