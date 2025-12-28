@@ -36,12 +36,12 @@ A LocalStack configuration...
 
 Provides a basic interface to [Amazon::S3](https://metacpan.org/pod/Amazon%3A%3AS3). These are convenience
 routines that don't necessarily expose all of the capabilities of
-[Amazon::S3](https://metacpan.org/pod/Amazon%3A%3AS3), however you call its methods directly too.
+[Amazon::S3](https://metacpan.org/pod/Amazon%3A%3AS3), however you call [Amazon::S3](https://metacpan.org/pod/Amazon%3A%3AS3)'s other methods too.
 
     <null:s3_client $s3.get_s3()>
     <null:result $s3_client.list_bucket()>
 
-The convenience routines return Bedrock objects while the raw method
+The convenience routines will return Bedrock objects while the raw method
 calls only return POPOs.
 
 # CONFIGURATION
@@ -56,15 +56,46 @@ A typical configuration file might look like this:
         <scalar name="aws_access_key_id">****************</scalar>
         <scalar name="aws_secret_access_key">****************</scalar>
         <scalar name="region">us-east-1</scalar>
-        <scalar name="host">localstack_main:4566</scalar>
-        <scalar name="secure">false</scalar>
-        <scalar name="dns_bucket_names">0</scalar>
       </object>
     </object>
 
 See [Amazon::S3](https://metacpan.org/pod/Amazon%3A%3AS3) for details.
 
 # METHODS AND SUBROUTINES
+
+## add\_bucket
+
+    add_bucket(bucket-name)
+
+Creates a new bucket. If you need to set options use the S3 object.
+
+    my $s3 = $self->get_s3;
+
+    $s3->add_bucket({ bucket => $bucket_name, ...});
+
+    $self->bucket($bucket_name);
+
+_NOTE: This does not set that bucket as the current bucket. Use `bucket()`_.
+
+## add\_key
+
+    add_key(key, value, [ bucket ])
+
+Example:
+
+    <null:readme $s3.get_key('README.md')>
+    <null:html --markdown $readme.value>
+    <null $s3.add_key('README.html', $html)>
+
+## bucket
+
+    bucket(bucket-name)
+
+Overrides the bucket defined in the configuration file.
+
+## buckets
+
+Returns an array bucket objects.
 
 ## copy\_object
 
@@ -75,6 +106,29 @@ See [Amazon::S3](https://metacpan.org/pod/Amazon%3A%3AS3) for details.
 Example:
 
     <null $s3.copy_object('/resources/info-book.pdf', ($session.session + '/info-book.pdf')>
+
+## delete\_keys
+
+    delete_keys(key, [bucket])
+
+`key` can be a single key or an array of multiple keys to delete.
+
+Example: Delete all the session files.
+
+    <null:keylist $s3.list_bucket('delimiter', '/', 'prefix', $session.session)>
+    
+    <null $s3.delete_keys($keylist.keys)>
+
+## get\_key
+
+    get_key(key, [ bucket ])
+
+Returns a hash contain the key value and metadata.
+
+- etag
+- value
+- content\_length
+- content\_type
 
 ## list\_bucket
 
@@ -168,50 +222,6 @@ In Bedrock...
       <null $keys.push($_.key) >
     </foreach>
 
-## bucket
-
-    bucket(bucket-name)
-
-Overrides the bucket defined in the configuration file.
-
-## buckets
-
-Returns an array bucket objects.
-
-## add\_bucket
-
-    add_bucket(bucket-name)
-
-Creates a new bucket. If you need to set options use the S3 object.
-
-    my $s3 = $self->get_s3;
-
-    $s3->add_bucket({ bucket => $bucket_name, ...});
-
-    $self->bucket($bucket_name);
-
-_NOTE: This does not set that bucket as the current bucket. Use `bucket()`._
-
-## add\_key
-
-    add_key(key, value, [ bucket ])
-
-## delete\_keys
-
-    delete_keys(key, [bucket])
-
-`key` can be a single key or an array of multiple keys to delete.
-
-Example: Delete all the session files.
-
-    <null:keylist $s3.list_bucket('delimiter', '/', 'prefix', $session.session)>
-    
-    <null $s3.delete_keys($keylist.keys)>
-
-## get\_key
-
-    get_key(key, [ bucket ])
-
 ## parse\_key
 
     parse_key(key)
@@ -256,11 +266,3 @@ Example:
 # AUTHOR
 
 Rob Lauer - <rlauer6@comcast.net>
-
-# POD ERRORS
-
-Hey! **The above document had some coding errors, which are explained below:**
-
-- Around line 473:
-
-    Unterminated I<...> sequence

@@ -1,9 +1,6 @@
 package Apache::BedrockCloudSessionFiles;
 
-#
-#    This file is a part of Bedrock, a server-side web scripting tool.
-#    Copyright (C) 2001, Charles Jones, LLC
-#    Copyright (C) 2024, TBC Development Group, LLC
+#    Copyright (C) 2025, TBC Development Group, LLC
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -25,6 +22,9 @@ use warnings;
 
 use English qw(-no_match_var);
 use Bedrock::Apache::Constants qw($OK);
+use Bedrock qw(choose);
+use Bedrock::Handler qw(cache);
+
 use Data::Dumper;
 use File::Type;
 
@@ -37,12 +37,14 @@ use Readonly;
 Readonly::Scalar our $TRUE  => 1;
 Readonly::Scalar our $FALSE => 0;
 
-our $VERSION = '1.0.0';
+our $VERSION = '1.0.1';
 
 ########################################################################
 sub handler {
 ########################################################################
   my ($r) = @_;
+
+  my $bedrock_handler = Bedrock::Handler->new( $r, cache => $cache );
 
   my $s3_config = get_s3_config();
 
@@ -50,15 +52,21 @@ sub handler {
     $r->log->debug( sprintf 'S3 session files configured for BUCKET [%s]', $s3_config->get_bucket_name );
   }
 
-  # note that get_file_info() validates session and throws exception
-  # if file does not exist. turn file checking off so that we can also
-  # look in S3 for the session file
-  my $file_info = eval { return get_file_info( $r, $FALSE ); };
+  # NOTE: get_file_info() validates session AND normally throws an
+  # exception if file does not exist. We turn file checking off so that
+  # we can also look in S3 for the session file
+  my $filename;
 
-  return set_error_status( $r, $EVAL_ERROR )
-    if !$file_info || $EVAL_ERROR;
+  if ( $s3_config->{local_session_files} ) {
+    my $file_info = eval { return get_file_info( $r, $FALSE ); };
 
-  my $filename = $file_info->{filename};
+    return set_error_status( $r, $EVAL_ERROR )
+      if !$file_info || $EVAL_ERROR;
+
+    $filename = $file_info->{filename};
+  }
+
+  $filename // $r->filename;
 
   my $status = eval {
     if ( -e $filename ) {
@@ -89,7 +97,7 @@ sub handler {
 
 1;
 
-## no critic (RequirePodSections)
+## no critic
 
 __END__
 
@@ -99,13 +107,32 @@ __END__
 
 Apache::BedrockCloudSessionFiles - serve files from local file system or S3
 
+=head1 SYNOPSIS
+
+  <Directory /var/www/vhosts/mysite/session>
+    AcceptPathInfo On
+    Options -Indexes
+  
+    <IfModule mod_perl.c>
+      SetHandler perl-script
+      PerlHandler Apache::BedrockCloudSessionFiles
+      PerlSetEnv AWS_BUCKET mybucket
+      PerlSetEmv S3_HOST localstack_main:4566
+    </IfModule>
+  
+    <IfModule !mod_perl.c>
+      SetHandler bedrock-session-files
+    </IfModule>
+  
+  </Directory>
+
 =head1 DESCRIPTION
 
 Implements an Apache handler that serves files from a local session
 directory or an S3 bucket.  This is typically used when a
 web application wishes to serve a private file to a user, or make a
 file available for only a short period of time to a specific user
-session.  A typical URI for this type of asset might look like:
+session. A typical URI for this type of asset might look like:
 
  /session/foo.pdf
 

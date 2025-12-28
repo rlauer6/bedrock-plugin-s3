@@ -41,7 +41,7 @@ use parent qw(Class::Accessor::Fast);
 
 __PACKAGE__->follow_best_practice;
 
-__PACKAGE__->mk_accessors(qw(s3 host bucket bucket_name));
+__PACKAGE__->mk_accessors(qw(s3 host bucket bucket_name secure dns_bucket_names));
 
 ########################################################################
 sub new {
@@ -74,8 +74,8 @@ sub new {
     Amazon::S3->new(
       { credentials      => $credentials,
         host             => $self->get_host,
-        dns_bucket_names => $self->get_host ? $FALSE : $TRUE,
-        secure           => $self->get_host ? $FALSE : $TRUE,
+        dns_bucket_names => $self->get_dns_bucket_names,
+        secure           => $self->get_secure,
       }
     );
   };
@@ -104,25 +104,46 @@ use English qw(-no_match_vars);
 use File::Basename qw(fileparse);
 use File::Type;
 
-my $host   = $ENV{S3_HOST} // 'https://s3.amazonaws.com';
-my $secure = $host =~ /https/xsm ? $TRUE : $FALSE;
+use Readonly;
+Readonly::Scalar our $DEFAULT_S3_HOST => 'https://s3.amazonaws.com';
 
-$host =~ s/^https?:\/\///xsm;
+{
 
-my $s3_config = S3Config->new(
-  { bucket_name           => $ENV{AWS_BUCKET},
-    aws_access_key_id     => $ENV{AWS_ACCESS_KEY_ID},
-    aws_secret_access_key => $ENV{AWS_SECRET_ACCESS_KEY},
-    token                 => $ENV{AWS_SESSION_TOKEN},
-    host                  => $host,
-    secure                => $secure,
+  my $s3_config;
+
+########################################################################
+  sub get_s3_config {
+########################################################################
+    my ($config) = @_;
+
+    $config //= {};
+
+    return $s3_config
+      if $s3_config;
+
+    my $host = $config->{host} // $ENV{S3_HOST} // 'https://s3.amazonaws.com';
+
+    my ($secure) = $host =~ /^http(s)/xsm;
+
+    my $dns_bucket_names      = $config->{dns_bucket_names} // $ENV{S3_HOST} ? $FALSE : $TRUE;
+    my $bucket                = $config->{bucket}           // $ENV{AWS_BUCKET};
+    my $aws_access_key_id     = $ENV{AWS_ACCESS_KEY_ID}     // $config->{aws_access_key_id};
+    my $aws_secret_access_key = $ENV{AWS_SECRET_ACCESS_KEY} // $config->{aws_secret_access_key};
+    my $token                 = $ENV{AWS_SESSION_TOKEN};
+
+    $s3_config = S3Config->new(
+      { bucket_name           => $bucket,
+        aws_access_key_id     => $aws_access_key_id,
+        aws_secret_access_key => $aws_secret_access_key,
+        token                 => $token,
+        host                  => $host,
+        secure                => $secure ? $TRUE : $FALSE,
+        dns_bucket_names      => $dns_bucket_names,
+      }
+    );
+
+    return $s3_config;
   }
-);
-
-########################################################################
-sub get_s3_config {
-########################################################################
-  return $s3_config;
 }
 
 ########################################################################
@@ -201,7 +222,6 @@ sub send_file {
 
   my $buffer;
 
-  ## no critic (RequireBriefOpen)
   my $mime_type = File::Type->new->mime_type($filename);
   $r->content_type($mime_type);
 
@@ -221,79 +241,102 @@ sub send_file {
 
 1;
 
-## no critic (RequirePodSections)
-
 __END__
 
 =pod
 
 =head1 NAME
 
-Apache::BedrockCloudSessionFiles - serve files from local or S3 session directories
+Apache::Bedrock:S3Handler - serve files from local or S3 session directories
 
 =head1 DESCRIPTION
 
-Implements an Apache handler that serves files from a local session
-directory or an S3 session directory.  This is typically used when a
-web application wishes to serve a private file to a user, or make a
-file available for only a short period of time to a specfic user
-session. A typical URI for this type of asset might look like:
+Role that provides useful methods for implementing S3 based
+applications.
 
- /session/foo.html
+=head1 METHODS AND SUBROUTINES
 
-In other words, the asset would be protected since the same URL would
-not access the asset for anyone other than the requestor since it is
-specific to their session.
+=head2 get_s3_config 
 
-=head1 NOTES
+Returns a class that class that implements getters for the S3 client
+and bucket objects.
 
-Use in conjunction with L<BLM::Startup::S3> for best results.
+When this class is loaded, the configuration object is initialized
+from the environment with these variables:
 
-Example:
+=over 5
 
- <null:session_file '%s/private.pdf'>
+=item S3_HOST
 
-Retrieve a file from an S3 bucket...
+default: https://s3.amazonaws.com
 
- <null:pdf $s3.get_key('/private/private.pdf')>
+If you provide the name of a host, then DNS bucket names will be
+turned off. This is typically done when you using a mocking service
+like LocalStack and have not setup domain names for your buckets.
 
-Write the key to the bucket with a prefix of the session
+=item AWS_BUCKET (required)
 
- <null $s3.add_key($session_file.sprintf($session.session), $pdf>
+=item AWS_ACCESS_KEY_ID
 
-Redirect the client to a URI that will serve the file from S3
- <null $header.see_other('/session/private.pdf')>
+AWS credential variables are optional. If you are running on an EC2
+instance or an ECS container credentials will be retrieved
+automatically from the instance metadata.
 
-=head2 Setting Up the Apache Handler
+=item AWS_SECRET_ACCESS_KEY
 
-Setup the handler in your Apache configuration file as shown below:
+=item AWS_SESSION_TOKEN
 
-  Action bedrock-cloudsession-files /cgi-bin/bedrock-session-files.cgi virtual
+=back
 
-  Alias /session /var/www/vhosts/mysite/session
+=head3 Methods
 
-  <Directory /var/www/vhosts/mysite/session>
-    AcceptPathInfo On
-    Options -Indexes
-  
-    <IfModule mod_perl.c>
-      SetHandler perl-script
-      PerlHandler Apache::BedrockCloudSessionFiles
-      PerlSetEnv AWS_BUCKET mybucket
-      PerlSetEnv S3_HOST localstack_main:4566
-    </IfModule>
-  
-    <IfModule !mod_perl.c>
-      SetHandler bedrock-session-files
-    </IfModule>
-  
-  </Directory>
+=over 5
 
-If you want to use the CGI version instead of the C<mod_perl> version
-of the handler, copy the CGI handler to your F</cgi-bin>
-directory. F<bedrock-session-files.cgi> is distributed as part of
-Bedrock and can be found at
-F</usr/local/lib/bedrock/cgi-bin/bedrock-session-files.cgi>.
+=item get_s3
+
+Returns an L<Amazon::S3> object.
+
+=item get_bucket_name
+
+Returns the bucket name.
+
+=item get_bucket
+
+Returns a L<Amazon::S3::Bucket> object.
+
+=back
+
+=head2 get_key_from_filename
+
+ get_key_from_filename(filename, [session-dir]);
+
+This poorly names method returns a path to an S3 object, possibly
+replacing the 'session' with 'session-dir'. The premise here is that a
+request was made for F<session/foo.pdf>. The object was stored under
+the user's session directory. That is, 'session' is a virtual
+directory that resolves at request time to be the user's session directory.
+
+=head2 get_s3_session_file 
+
+ get_s3_session_file(filename, session-dir)
+
+Retrieves an object from S3 and returns it as a scalar.
+
+=head2 send_s3_file
+
+ send_s3_file(request-handler, filename, session-dir)
+
+Retrieves a file from the S3 bucket that belongs to a particular
+session. Attempts to determine the mime type by looking up the
+extension in an internal table or by using L<File::Type>.
+
+=head2 send_file 
+
+ send_file(request-handler, filename)
+
+Sends a file to the HTTP client. Attempts to determine the mime type
+of the file using L<File::Type>.
+
 
 =head1 SEE OTHER
 

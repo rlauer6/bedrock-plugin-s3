@@ -1,3 +1,21 @@
+Sun Dec 28 11:27:35 2025  Rob Lauer  <rlauer6@comcast.net>
+
+	[1.0.1]:
+	* ChangeLog
+	* README.md
+	* docker-compose.yml
+	- add web service
+	* lib/BLM/Startup/S3.pm
+	- bump vesion
+	- pod
+	* lib/Bedrock/Apache/BedrockCloudSessionFiles.pm
+	- bump version
+	* lib/Bedrock/Apache/BedrockS3Handler.pm
+	- use dns_bucket_names, secure options
+	- set dns_bucket_names false if using localhost
+	- fix pod
+	* Dockerfile: new
+
 Sat Jan 18 09:28:05 2025  Rob Lauer  <rlauer6@comcast.net>
 
 	[1.0.0 - moved from Bedrock]:

@@ -35,7 +35,7 @@ use English qw(-no_match_vars);
 use File::Basename qw(basename fileparse);
 use Time::Piece;
 
-our $VERSION = '1.0.0';
+our $VERSION = '1.0.1';
 
 use parent qw(Bedrock::Application::Plugin Class::Accessor::Fast);
 
@@ -268,8 +268,6 @@ sub bucket {
 
 1;
 
-## no critic (RequirePodSections)
-
 __END__
 
 =pod
@@ -312,12 +310,12 @@ A LocalStack configuration...
 
 Provides a basic interface to L<Amazon::S3>. These are convenience
 routines that don't necessarily expose all of the capabilities of
-L<Amazon::S3>, however you call its methods directly too.
+L<Amazon::S3>, however you call L<Amazon::S3>'s other methods too.
 
  <null:s3_client $s3.get_s3()>
  <null:result $s3_client.list_bucket()>
 
-The convenience routines return Bedrock objects while the raw method
+The convenience routines will return Bedrock objects while the raw method
 calls only return POPOs.
 
 =head1 CONFIGURATION
@@ -332,15 +330,46 @@ A typical configuration file might look like this:
      <scalar name="aws_access_key_id">****************</scalar>
      <scalar name="aws_secret_access_key">****************</scalar>
      <scalar name="region">us-east-1</scalar>
-     <scalar name="host">localstack_main:4566</scalar>
-     <scalar name="secure">false</scalar>
-     <scalar name="dns_bucket_names">0</scalar>
    </object>
  </object>
 
 See L<Amazon::S3> for details.
 
 =head1 METHODS AND SUBROUTINES
+
+=head2 add_bucket
+
+ add_bucket(bucket-name)
+
+Creates a new bucket. If you need to set options use the S3 object.
+
+ my $s3 = $self->get_s3;
+
+ $s3->add_bucket({ bucket => $bucket_name, ...});
+
+ $self->bucket($bucket_name);
+
+I<NOTE: This does not set that bucket as the current bucket. Use C<bucket()>>.
+
+=head2 add_key
+
+ add_key(key, value, [ bucket ])
+
+Example:
+
+ <null:readme $s3.get_key('README.md')>
+ <null:html --markdown $readme.value>
+ <null $s3.add_key('README.html', $html)>
+
+=head2 bucket
+
+ bucket(bucket-name)
+
+Overrides the bucket defined in the configuration file.
+
+=head2 buckets
+
+Returns an array bucket objects.
 
 =head2 copy_object
 
@@ -351,6 +380,36 @@ C<headers> is an optional list of key value pairs.
 Example:
 
  <null $s3.copy_object('/resources/info-book.pdf', ($session.session + '/info-book.pdf')>
+
+=head2 delete_keys
+
+ delete_keys(key, [bucket])
+
+C<key> can be a single key or an array of multiple keys to delete.
+
+Example: Delete all the session files.
+
+ <null:keylist $s3.list_bucket('delimiter', '/', 'prefix', $session.session)>
+ 
+ <null $s3.delete_keys($keylist.keys)>
+
+=head2 get_key
+
+ get_key(key, [ bucket ])
+
+Returns a hash contain the key value and metadata.
+
+=over 5
+
+=item etag
+
+=item value
+
+=item content_length
+
+=item content_type
+
+=back
 
 =head2 list_bucket
 
@@ -447,50 +506,6 @@ In Bedrock...
  <foreach $s3.list_bucket()>
    <null $keys.push($_.key) >
  </foreach>
-
-=head2 bucket
-
- bucket(bucket-name)
-
-Overrides the bucket defined in the configuration file.
-
-=head2 buckets
-
-Returns an array bucket objects.
-
-=head2 add_bucket
-
- add_bucket(bucket-name)
-
-Creates a new bucket. If you need to set options use the S3 object.
-
- my $s3 = $self->get_s3;
-
- $s3->add_bucket({ bucket => $bucket_name, ...});
-
- $self->bucket($bucket_name);
-
-I<NOTE: This does not set that bucket as the current bucket. Use C<bucket()>.
-
-=head2 add_key
-
- add_key(key, value, [ bucket ])
-
-=head2 delete_keys
-
- delete_keys(key, [bucket])
-
-C<key> can be a single key or an array of multiple keys to delete.
-
-Example: Delete all the session files.
-
- <null:keylist $s3.list_bucket('delimiter', '/', 'prefix', $session.session)>
- 
- <null $s3.delete_keys($keylist.keys)>
-
-=head2 get_key
-
- get_key(key, [ bucket ])
 
 =head2 parse_key
 
