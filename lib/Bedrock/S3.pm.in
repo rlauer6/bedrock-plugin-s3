@@ -1,0 +1,88 @@
+package Bedrock::S3;
+
+#    Copyright (C) 2025, TBC Development Group, LLC
+#
+#    This program is free software; you can redistribute it and/or modify
+#    it under the terms of the GNU General Public License as published by
+#    the Free Software Foundation; either version 2 of the License, or
+#    any later version.
+#
+#    This program is distributed in the hope that it will be useful,
+#    but WITHOUT ANY WARRANTY; without even the implied warranty of
+#    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+#    GNU General Public License for more details.
+#
+#    You should have received a copy of the GNU General Public License
+#    along with this program; if not, write to the Free Software
+#    Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
+#
+
+use strict;
+use warnings;
+
+use Amazon::Credentials;
+use Amazon::S3;
+use Bedrock::Constants qw(:booleans);
+use Carp;
+use Data::Dumper;
+use English qw(-no_match_vars);
+
+use parent qw(Class::Accessor::Fast);
+
+__PACKAGE__->follow_best_practice;
+
+__PACKAGE__->mk_accessors(qw(s3 host bucket bucket_name secure dns_bucket_names));
+
+########################################################################
+sub new {
+########################################################################
+  my ( $class, $options ) = @_;
+
+  my $host = $options->{host};
+  $host =~ s/^https?:\/\///xsm;
+  $options->{host} = $host;
+
+  my $self = $class->SUPER::new($options);
+
+  my $credentials = eval {
+    Amazon::Credentials->new(
+      aws_access_key_id     => $options->{AWS_ACCESS_KEY_ID},
+      aws_secret_access_key => $options->{AWS_SECRET_ACCESS_KEY},
+      token                 => $options->{AWS_SESSION_TOKEN},
+      no_passkey_warning    => $FALSE,
+      order                 => $options->{order},
+    );
+  };
+
+  if ( !$credentials ) {
+    carp 'no credentials';
+
+    return $FALSE;
+  }
+
+  if ( !$self->get_bucket_name ) {
+    carp 'no bucket name';
+  }
+
+  my $s3 = eval {
+    Amazon::S3->new(
+      { credentials      => $credentials,
+        host             => $self->get_host,
+        dns_bucket_names => $self->get_dns_bucket_names,
+        secure           => $self->get_secure,
+      }
+    );
+  };
+
+  if ( !$s3 ) {
+    carp 'could not instantiate an S3 object';
+  }
+
+  $self->set_s3($s3);
+
+  $self->set_bucket( $s3->bucket( $self->get_bucket_name ) );
+
+  return $self;
+}
+
+1;

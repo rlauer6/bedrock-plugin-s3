@@ -1,7 +1,6 @@
-#
-#    This file is a part of Bedrock, a server-side web scripting tool.
-#    Copyright (C) 2001, Charles Jones, LLC
-#    Copyright (C) 2023, TBC Development Group, LLC
+package Bedrock::Apache::BedrockS3Handler;
+
+#    Copyright (C) 2025, TBC Development Group, LLC
 #
 #    This program is free software; you can redistribute it and/or modify
 #    it under the terms of the GNU General Public License as published by
@@ -21,91 +20,21 @@
 use strict;
 use warnings;
 
-use Readonly;
-
-Readonly::Scalar our $BUFFER_SIZE => 4 * 1024;
-Readonly::Scalar our $EMPTY       => q{};
-
-Readonly::Scalar our $TRUE  => 1;
-Readonly::Scalar our $FALSE => 0;
-
-########################################################################
-package S3Config;
-########################################################################
-
-use Amazon::Credentials;
-use Amazon::S3;
-use Carp;
-
-use parent qw(Class::Accessor::Fast);
-
-__PACKAGE__->follow_best_practice;
-
-__PACKAGE__->mk_accessors(qw(s3 host bucket bucket_name secure dns_bucket_names));
-
-########################################################################
-sub new {
-########################################################################
-  my ( $class, $options ) = @_;
-
-  my $self = $class->SUPER::new($options);
-
-  my $credentials = eval {
-    Amazon::Credentials->new(
-      aws_access_key_id     => $options->{AWS_ACCESS_KEY_ID},
-      aws_secret_access_key => $options->{AWS_SECRET_ACCESS_KEY},
-      token                 => $options->{AWS_SESSION_TOKEN},
-      no_passkey_warning    => $FALSE,
-      order                 => $options->{order},
-    );
-  };
-
-  if ( !$credentials ) {
-    carp 'no credentials';
-
-    return $FALSE;
-  }
-
-  if ( !$self->get_bucket_name ) {
-    carp 'no bucket name';
-  }
-
-  my $s3 = eval {
-    Amazon::S3->new(
-      { credentials      => $credentials,
-        host             => $self->get_host,
-        dns_bucket_names => $self->get_dns_bucket_names,
-        secure           => $self->get_secure,
-      }
-    );
-  };
-
-  if ( !$s3 ) {
-    carp 'could not instantiate an S3 object';
-  }
-
-  $self->set_s3($s3);
-
-  $self->set_bucket( $s3->bucket( $self->get_bucket_name ) );
-
-  return $self;
-}
-
-########################################################################
-package Bedrock::Apache::BedrockS3Handler;
-########################################################################
-
-use Role::Tiny;
-
-use Bedrock::Constants qw(%DEFAULT_MIME_TYPES);
+use Bedrock qw(choose to_boolean);
 use Bedrock::Apache::Constants qw($OK);
+use Bedrock::Constants qw(%DEFAULT_MIME_TYPES :booleans);
+use Bedrock::S3;
 use Carp;
 use English qw(-no_match_vars);
 use File::Basename qw(fileparse);
-use File::Type;
+use Role::Tiny;
 
 use Readonly;
+Readonly::Scalar our $BUFFER_SIZE     => 4 * 1024;
+Readonly::Scalar our $EMPTY           => q{};
 Readonly::Scalar our $DEFAULT_S3_HOST => 'https://s3.amazonaws.com';
+
+our $VERSION = '@PACKAGAGE_VERSION@';
 
 {
 
@@ -121,9 +50,9 @@ Readonly::Scalar our $DEFAULT_S3_HOST => 'https://s3.amazonaws.com';
     return $s3_config
       if $s3_config;
 
-    my $host = $config->{host} // $ENV{S3_HOST} // 'https://s3.amazonaws.com';
-
-    my ($secure) = $host =~ /^http(s)/xsm;
+    my $host   = $ENV{S3_HOST} // $config->{host} // 's3.amazonaws.com';
+    my $secure = to_boolean( $config->{secure} );
+    $secure = defined $secure ? $secure : $host eq 's3.amazonaws.com' ? 1 : 0;
 
     my $dns_bucket_names      = $config->{dns_bucket_names} // $ENV{S3_HOST} ? $FALSE : $TRUE;
     my $bucket                = $config->{bucket}           // $ENV{AWS_BUCKET};
@@ -131,7 +60,9 @@ Readonly::Scalar our $DEFAULT_S3_HOST => 'https://s3.amazonaws.com';
     my $aws_secret_access_key = $ENV{AWS_SECRET_ACCESS_KEY} // $config->{aws_secret_access_key};
     my $token                 = $ENV{AWS_SESSION_TOKEN};
 
-    $s3_config = S3Config->new(
+    $s3_config->{session_prefix} //= $EMPTY;
+
+    $s3_config = Bedrock::S3->new(
       { bucket_name           => $bucket,
         aws_access_key_id     => $aws_access_key_id,
         aws_secret_access_key => $aws_secret_access_key,
@@ -151,16 +82,25 @@ sub get_key_from_filename {
 ########################################################################
   my ( $filename, $session_dir ) = @_;
 
-  my $key = $filename;
+  my $key = choose {
+    my $key = $filename;
 
-  if ( !$session_dir ) {
-    $key =~ s/^.*session\///xsm;
-  }
-  else {
+    if ( !$session_dir ) {
+      $key =~ s/^.*session\///xsm;
+      return $key;
+    }
+
     $key =~ s/^$session_dir\///xsm;
+    return $key;
+  };
+
+  my $prefix = get_s3_config->{session_prefix};
+
+  if ( $prefix && $prefix !~ /\/$/xsm ) {
+    $prefix = "$prefix/";
   }
 
-  return $key;
+  return sprintf '%s%s', $prefix, $key;
 }
 
 ########################################################################
@@ -170,7 +110,7 @@ sub get_s3_session_file {
 
   my $key = get_key_from_filename( $filename, $session_dir );
 
-  my $bucket = $s3_config->get_bucket;
+  my $bucket = get_s3_config->get_bucket;
 
   my $obj = eval { $bucket->get_key($key); };
 
@@ -194,16 +134,32 @@ sub send_s3_file {
 
   my ( $name, $path, $ext ) = fileparse( $filename, qr/[.][^.]+$/xsm );
 
-  my $mime_type = eval {
-    return $DEFAULT_MIME_TYPES{$ext}
-      if DEFAULT_MIME_TYPES {$ext};
+  my $value = $obj->{value};
 
-    return File::Type->new->mime_type( $obj->{value} );
+  my $mime_type = eval {
+    require File::MimeInfo::Magic;
+    File::MimeInfo::Magic->import('mimetype');
+
+    open my $fh, '<', \$value;
+    my $mime_type = File::MimeInfo::Magic($fh);
+    close $fh;
+
+    return $mime_type;
   };
 
-  if ( !$mime_type || $EVAL_ERROR ) {
-    $r->log->warn( 'could not determine mime-type ' . $EVAL_ERROR );
-    $mime_type = 'application/octet-stream';
+  $mime_type = eval {
+    require File::Type;
+    return File::Type->new->mime_type($value);
+  };
+
+  if ( !$mime_type || $mime_type =~ /octet\-stream/xsm ) {
+    # see if we can do better than octet/
+    $mime_type = $DEFAULT_MIME_TYPES{$ext};
+
+    if ( !$mime_type ) {
+      $r->log->warn( 'could not determine mime-type ' . $EVAL_ERROR );
+      $mime_type = 'application/octet-stream';
+    }
   }
 
   $r->content_type($mime_type);
@@ -247,7 +203,7 @@ __END__
 
 =head1 NAME
 
-Apache::Bedrock:S3Handler - serve files from local or S3 session directories
+Apache::Bedrock:S3Handler - Role for use with Apache::BedrockCloudSessionFiles
 
 =head1 DESCRIPTION
 
@@ -261,30 +217,65 @@ applications.
 Returns a class that class that implements getters for the S3 client
 and bucket objects.
 
+=head3 Use Environment Variables or a Configuration Object
+
 When this class is loaded, the configuration object is initialized
-from the environment with these variables:
+from the environment or from Bedrock's global configuration object.
+
+You can add an C<s3> object to Bedrock's global configuration file by
+either adding it directly to your C<tagx.xml> file or by adding a
+C<.xml> file like C<s3.xml> that contains an C<s3> object.
+
+ <object>
+   <object name="s3">
+     <scalar name="host">s3.amazonaws.com</scalar>
+     <scalar name="secure">yes</scalar>
+     <scalar name="aws_access_key_id">...</scalar>
+     <scalar name="aws_secret_access_key">...</scalar>
+   </object>
+ </object>
+
+Options are described below (environment variable, configuration variable).
 
 =over 5
 
-=item S3_HOST
+=item S3_HOST, host
 
-default: https://s3.amazonaws.com
+default: s3.amazonaws.com
 
-If you provide the name of a host, then DNS bucket names will be
-turned off. This is typically done when you using a mocking service
-like LocalStack and have not setup domain names for your buckets.
+If you provide the name of a host other than C<s3.amazonaws.com>, then
+DNS bucket names will be turned off unless you explicitly set that
+variable. This is typically done when you are using a mocking service like
+LocalStack and have not setup domain names for your buckets.
 
-=item AWS_BUCKET (required)
+=item AWS_BUCKET, bucket (required)
 
-=item AWS_ACCESS_KEY_ID
+The bucket name where session files will be stored.
 
-AWS credential variables are optional. If you are running on an EC2
-instance or an ECS container credentials will be retrieved
+=item session_prefix
+
+The prefix to use when storing session files. Session files will be
+stored in the bucket with at least the session id as the prefix. If
+you want to store you session files with an additional prefix, set
+this value in the configuration object.
+
+=item AWS_ACCESS_KEY_ID, aws_access_key_id
+
+You IAM user's access key.
+
+I<NOTE: Best practice is to use environment variables or set a role
+for you EC2 or container. Setting these variables in the environment
+or the configuration file is optional. If you are running on an EC2
+instance or an ECS container credentials can be retrieved
 automatically from the instance metadata.
 
-=item AWS_SECRET_ACCESS_KEY
+=item AWS_SECRET_ACCESS_KEY, aws_secret_access_key
+
+You IAM user's secret access key.
 
 =item AWS_SESSION_TOKEN
+
+A temporary access token used when you assume a role.
 
 =back
 
@@ -337,10 +328,11 @@ extension in an internal table or by using L<File::Type>.
 Sends a file to the HTTP client. Attempts to determine the mime type
 of the file using L<File::Type>.
 
+I<TBD: Use Apache directly to send files on the local file system.>
 
 =head1 SEE OTHER
 
-L<Bedrock::Handler>, L<Bedrock::Apache::Request_cgi>, L<BLM::Startup::S3>
+L<Bedrock::S3>, L<Bedrock::Handler>, L<Bedrock::Apache::Request_cgi>, L<BLM::Startup::S3>
 
 =head1 AUTHOR
 

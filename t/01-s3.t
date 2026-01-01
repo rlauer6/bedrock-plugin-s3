@@ -60,8 +60,6 @@ Readonly::Scalar our $LOCALSTACK_HEALTH_CHECK => 'http://localhost:4566/_localst
 
 our $BLM_STARTUP_MODULE = 'BLM::Startup::S3';
 
-$Amazon::Credentials::NO_PASSKEY_WARNING = 1;
-
 ########################################################################
 sub check_localstack {
 ########################################################################

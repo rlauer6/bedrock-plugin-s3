@@ -1,20 +1,56 @@
-Sun Dec 28 11:27:35 2025  Rob Lauer  <rlauer6@comcast.net>
+Thu Jan  1 06:33:25 2026  Rob Lauer  <rclauer@gmail.com>
 
 	[1.0.1]:
-	* ChangeLog
-	* README.md
+	* VERSION: new
+	* README.md: generated
+	* lib/BLM/Startup/S3.pm -> lib/BLM/Startup/S3.pm.in: renamed
+	* lib/Bedrock/Apache/BedrockCloudSessionFiles.pm -> lib/Bedrock/Apache/BedrockCloudSessionFiles.pm.in: likewise
+	* lib/Bedrock/Apache/BedrockS3Handler.pm -> lib/Bedrock/Apache/BedrockS3Handler.pm: likewise
+	* Makefile
+	- updates for above renamed files
+	- version.mk
+	- pattern rule for .pm
+	(image): new
 	* docker-compose.yml
 	- add web service
+	- environment variables set in image
 	* lib/BLM/Startup/S3.pm
 	- bump vesion
-	- pod
-	* lib/Bedrock/Apache/BedrockCloudSessionFiles.pm
+	- pod fixes and updates
+	(create_session_file): new
+	(buckets): refactored with grab_bag()
+	(add_bucket): typo
+	(check_bucket): new
+	(delete_keys): refactored with above
+	(get_key_value): new
+	(get_key)
+	- refactored using check_bucket
+	- unload metadata and reformat into MetaData hash
+	(list_bucket_keys)
+	- refactored
+	- raw option to return raw result
+	(list_bucket_keys): minor refactoring
+	(bucket): getter that constructs object if necessar
+	* lib/Bedrock/Apache/BedrockCloudSessionFiles.pm.in
 	- bump version
-	* lib/Bedrock/Apache/BedrockS3Handler.pm
+	- refactoring
+	- use 's3' config object
+	- local_files_flag for serving local session files or from bucket
+	(handler): minor refactoring
+	* lib/Bedrock/Apache/BedrockS3Handler.pm.in
 	- use dns_bucket_names, secure options
 	- set dns_bucket_names false if using localhost
 	- fix pod
+	- move S3Config to Bedrock::S3
+	(get_s3_config)
+	- refactored to use Bedrock::S3
+	- use config and %ENV
+	(get_key_from_filename)
+	- refactored to use session_prefix
 	* Dockerfile: new
+	* lib/Bedrock/S3.pm.in: new
+	* provide: +above
+	* t/01-s3.t: remove use of package variable
 
 Sat Jan 18 09:28:05 2025  Rob Lauer  <rlauer6@comcast.net>
 

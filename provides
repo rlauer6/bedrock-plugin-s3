@@ -1,3 +1,4 @@
+BLM::Startup::S3
 Bedrock::Apache::BedrockCloudSessionFiles
 Bedrock::Apache::BedrockS3Handler
-BLM::Startup::S3
+Bedrock::S3
